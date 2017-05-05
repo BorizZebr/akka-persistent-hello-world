@@ -5,6 +5,8 @@ import java.util.UUID
 import akka.actor.{ActorLogging, ActorRef, Props, ReceiveTimeout}
 import akka.persistence._
 import com.zebrosoft.model._
+import shapeless.{Generic, Poly1}
+
 import scala.concurrent.duration._
 
 /**
@@ -15,11 +17,13 @@ class CartHandler(manager: ActorRef, cartId: UUID)
     with AtLeastOnceDelivery
     with ActorLogging {
 
+  val genCartCommand = Generic[CartCommand]
+
   override def persistenceId: String = cartId.toString
 
   var state: Cart = Cart(cartId)
 
-  context.setReceiveTimeout(10 seconds)
+  context.setReceiveTimeout(10.seconds)
 
   def foldState[A <: CartEvent]: A => Unit = e =>
     if(updateFunction.isDefinedAt(e)) {
@@ -30,9 +34,14 @@ class CartHandler(manager: ActorRef, cartId: UUID)
     case CartItemAddEvent(item, am) => state.addItem(Item(item, am))
     case CartItemRemoveEvent(item) => state.removeItem(item)
     case CartItemChangeAmountEvent(item, am) => state.changeAmount(item, am)
-    case CartClosedEvent() =>
-      context become closed
-      state.close
+    case CartClosedEvent => context become closed; state.close
+  }
+
+  object commandToEvent extends Poly1 {
+    implicit def caseCloseCart    = at[CloseCartCommand]   (_ => CartClosedEvent)
+    implicit def caseAddItem      = at[AddItemCommand]     (c => CartItemAddEvent(c.item, c.amount))
+    implicit def caseRemoveItem   = at[RemoveItemCommand]  (c => CartItemRemoveEvent(c.item))
+    implicit def caseAmountChange = at[ChangeAmountCommand](c => CartItemChangeAmountEvent(c.item, c.newAmount))
   }
 
   def withCheckedId(id: UUID)(a: => Unit) = {
@@ -43,29 +52,16 @@ class CartHandler(manager: ActorRef, cartId: UUID)
   override def receiveCommand: Receive = opened
 
   def opened: Receive = receiveInfra orElse receiveGet orElse {
-    case CloseCartCommand(id) => withCheckedId(id) {
-      persist(CartClosedEvent())(foldState)
-      sender ! Ack
-    }
-
-    case AddItemCommand(id, itm, am) => withCheckedId(id) {
-      persist(CartItemAddEvent(itm, am))(foldState)
-      sender ! Ack
-    }
-
-    case RemoveItemCommand(id, itm) => withCheckedId(id) {
-      persist(CartItemRemoveEvent(itm))(foldState)
-      sender ! Ack
-    }
-
-    case ChangeAmountCommand(id, itm, am) => withCheckedId(id) {
-      persist(CartItemChangeAmountEvent(itm, am))(foldState)
+    case cmd: CartCommand => withCheckedId(cmd.cartId) {
+      val cmdCoproduct = genCartCommand.to(cmd)
+      val event = (cmdCoproduct map commandToEvent).unify
+      persist(event)(foldState)
       sender ! Ack
     }
   }
 
   def closed: Receive = receiveInfra orElse receiveGet orElse {
-    case c: CartCommand => withCheckedId(c.cartId)(sender ! CartAlreadyClosed)
+    case c: CartId => withCheckedId(c.cartId)(sender ! CartAlreadyClosed)
   }
 
   def receiveGet: Receive = {

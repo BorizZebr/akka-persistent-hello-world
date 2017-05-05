@@ -9,7 +9,7 @@ trait CartEvent {
   val time: Long = System.currentTimeMillis
 }
 
-case class CartClosedEvent() extends CartEvent
+case object CartClosedEvent extends CartEvent
 
 case class CartItemAddEvent(itemId: UUID, amount: Int) extends CartEvent
 

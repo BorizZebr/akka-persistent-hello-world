@@ -72,7 +72,7 @@ class CartManagerSpec
       unknownHandler expectMsg msg
       whenReady(res) { r =>
         r shouldBe testAnswer
-        manager.underlyingActor.cmdHandlers should contain key(unknownId)
+        manager.underlyingActor.cmdHandlers should contain key unknownId
       }
     }
   }

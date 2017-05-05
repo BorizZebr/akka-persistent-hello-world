@@ -9,12 +9,8 @@ trait CartId {
   def cartId: UUID
 }
 
-trait CartCommand extends CartId
-
+sealed trait CartCommand extends CartId
 case class CloseCartCommand(cartId: UUID) extends CartCommand
-
 case class AddItemCommand(cartId: UUID, item: UUID, amount: Int) extends CartCommand
-
 case class RemoveItemCommand(cartId: UUID, item: UUID) extends CartCommand
-
 case class ChangeAmountCommand(cartId: UUID, item: UUID, newAmount: Int) extends CartCommand

@@ -5,7 +5,11 @@ lazy val `akka-persistent-hello-world` = (project in file("."))
     name := "akka-persistent-hello-world",
     version := "1.0",
     scalaVersion := "2.12.1",
-    libraryDependencies ++= dependencies
+    libraryDependencies ++= dependencies,
+    resolvers ++= Seq(
+      Resolver.sonatypeRepo("releases"),
+      Resolver.sonatypeRepo("snapshots")
+    )
   )
 
 lazy val dependencies = {
@@ -22,6 +26,8 @@ lazy val dependencies = {
     "org.fusesource.leveldbjni"   % "leveldbjni-all"   % "1.8",
 
     "org.scalatest" %% "scalatest" % "3.0.1" % "test",
-    "org.mockito" % "mockito-core" % "2.7.5" % "test"
+    "org.mockito" % "mockito-core" % "2.7.5" % "test",
+
+    "com.chuusai" %% "shapeless" % "2.3.2"
   )
 }
