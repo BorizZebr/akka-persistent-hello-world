@@ -28,6 +28,7 @@ lazy val dependencies = {
     "org.scalatest" %% "scalatest" % "3.0.1" % "test",
     "org.mockito" % "mockito-core" % "2.7.5" % "test",
 
-    "com.chuusai" %% "shapeless" % "2.3.2"
+    "com.chuusai" %% "shapeless" % "2.3.2",
+    "org.typelevel" %% "cats" % "0.9.0"
   )
 }

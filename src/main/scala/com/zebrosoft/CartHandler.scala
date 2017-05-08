@@ -5,7 +5,6 @@ import java.util.UUID
 import akka.actor.{ActorLogging, ActorRef, Props, ReceiveTimeout}
 import akka.persistence._
 import com.zebrosoft.model._
-import shapeless.{Generic, Poly1}
 
 import scala.concurrent.duration._
 
@@ -14,35 +13,15 @@ import scala.concurrent.duration._
   */
 class CartHandler(manager: ActorRef, cartId: UUID)
   extends PersistentActor
+    with CartEventCommandLogic
     with AtLeastOnceDelivery
     with ActorLogging {
-
-  val genCartCommand = Generic[CartCommand]
 
   override def persistenceId: String = cartId.toString
 
   var state: Cart = Cart(cartId)
 
   context.setReceiveTimeout(10.seconds)
-
-  def foldState[A <: CartEvent]: A => Unit = e =>
-    if(updateFunction.isDefinedAt(e)) {
-      state = updateFunction(e)
-    }
-
-  val updateFunction: PartialFunction[CartEvent, Cart] = {
-    case CartItemAddEvent(item, am) => state.addItem(Item(item, am))
-    case CartItemRemoveEvent(item) => state.removeItem(item)
-    case CartItemChangeAmountEvent(item, am) => state.changeAmount(item, am)
-    case CartClosedEvent => context become closed; state.close
-  }
-
-  object commandToEvent extends Poly1 {
-    implicit def caseCloseCart    = at[CloseCartCommand]   (_ => CartClosedEvent)
-    implicit def caseAddItem      = at[AddItemCommand]     (c => CartItemAddEvent(c.item, c.amount))
-    implicit def caseRemoveItem   = at[RemoveItemCommand]  (c => CartItemRemoveEvent(c.item))
-    implicit def caseAmountChange = at[ChangeAmountCommand](c => CartItemChangeAmountEvent(c.item, c.newAmount))
-  }
 
   def withCheckedId(id: UUID)(a: => Unit) = {
     if(id == cartId) a
@@ -53,9 +32,10 @@ class CartHandler(manager: ActorRef, cartId: UUID)
 
   def opened: Receive = receiveInfra orElse receiveGet orElse {
     case cmd: CartCommand => withCheckedId(cmd.cartId) {
-      val cmdCoproduct = genCartCommand.to(cmd)
-      val event = (cmdCoproduct map commandToEvent).unify
-      persist(event)(foldState)
+      persist(commandToEvent(cmd)) { e =>
+        state = foldState(state)(e)
+        if(state.isClosed) context become closed
+      }
       sender ! Ack
     }
   }
@@ -74,7 +54,7 @@ class CartHandler(manager: ActorRef, cartId: UUID)
   }
 
   override def receiveRecover: Receive = {
-    case evt: CartEvent => foldState(evt)
+    case evt: CartEvent => state = foldState(state)(evt)
     case SnapshotOffer(_, snapshot: Cart) => state = snapshot
   }
 }
